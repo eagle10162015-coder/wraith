@@ -17,10 +17,12 @@ import secrets as os_secrets
 import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
+from functools import wraps
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from filelock import FileLock
 
 from .secrets import (
     SecretCapability,
@@ -39,6 +41,17 @@ _VERSION = 1
 def _vault_path() -> Path:
     configured = os.environ.get("WRAITH_VAULT_PATH")
     return Path(configured).expanduser() if configured else Path.home() / ".wraith" / "accounts.vault"
+
+
+def _locked(fn):
+    """Serialize key creation and read/modify/write across agent processes."""
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        path = _vault_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with FileLock(str(path) + ".lock", timeout=30):
+            return fn(*args, **kwargs)
+    return wrapper
 
 
 def _key() -> bytes:
@@ -97,6 +110,7 @@ def _save(records: list[dict[str, str]]) -> None:
             os.unlink(tmp_name)
 
 
+@_locked
 def import_google_csv(paths: list[str], *, source: str = "google") -> dict[str, int]:
     """Merge Google Password Manager CSV exports without discarding other accounts."""
     records = _load()
@@ -142,6 +156,7 @@ def import_google_csv(paths: list[str], *, source: str = "google") -> dict[str, 
     return {"imported": imported, "updated": updated, "skipped": skipped}
 
 
+@_locked
 def accounts_for(url: str) -> list[dict[str, str]]:
     origin = canonical_origin(url)
     return [
@@ -150,6 +165,7 @@ def accounts_for(url: str) -> list[dict[str, str]]:
     ]
 
 
+@_locked
 def all_accounts() -> list[dict[str, str]]:
     return [
         {key: r[key] for key in ("id", "origin", "username", "name", "source")}
@@ -157,6 +173,7 @@ def all_accounts() -> list[dict[str, str]]:
     ]
 
 
+@_locked
 def upsert_account(
     url: str, username: str, password: str, *, name: str = "", source: str = "agent", account_id: str = ""
 ) -> dict[str, str]:
@@ -179,6 +196,7 @@ def upsert_account(
     return {key: record[key] for key in ("id", "origin", "username", "name", "source")}
 
 
+@_locked
 def delete_account(account_id: str) -> bool:
     records = _load()
     remaining = [r for r in records if r["id"] != account_id]
@@ -188,6 +206,7 @@ def delete_account(account_id: str) -> bool:
     return True
 
 
+@_locked
 def capability_for(account_id: str, field_kind: str) -> dict[str, object]:
     if field_kind not in {"username", "password"}:
         raise ValueError("field_kind must be username or password")
@@ -216,6 +235,7 @@ def capability_for(account_id: str, field_kind: str) -> dict[str, object]:
     }
 
 
+@_locked
 def _reveal_for_browser(account_id: str, field_kind: str, url: str) -> str:
     """Internal adapter boundary; never return this value from an agent tool."""
     if field_kind not in {"username", "password"}:
@@ -227,6 +247,7 @@ def _reveal_for_browser(account_id: str, field_kind: str, url: str) -> str:
 
 
 class AccountVaultProvider:
+    @_locked
     def resolve(self, capability: SecretCapability, context: SecretRequestContext) -> SecretMaterial:
         parts = capability.handle.split(":")
         if len(parts) != 5:

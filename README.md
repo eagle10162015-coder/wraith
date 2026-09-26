@@ -18,6 +18,8 @@ passwords can be stored with `save_account(...)`; pass the existing account ID
 when rotating an imported password. The AES-GCM vault file is
 `~/.wraith/accounts.vault` by default; its key is held in the OS keyring.
 `WRAITH_VAULT_PATH` changes the local file location.
+Vault reads and writes use a cross-process lock, so multiple agent processes
+cannot overwrite each other's account updates.
 
 The MCP browser uses a persistent, headed profile at
 `~/.wraith/profiles/default`. Set `WRAITH_PROFILE_DIR` for another profile or

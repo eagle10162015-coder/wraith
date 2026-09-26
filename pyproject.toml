@@ -44,6 +44,7 @@ dependencies = [
     # (wraith.deaddrop) for the profile-sync feature.
     "cryptography>=42",
     "keyring>=25",
+    "filelock>=3.16",
 ]
 
 [project.urls]
