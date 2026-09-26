@@ -14,7 +14,8 @@ python -m wraith.account_vault import-google C:\path\to\other-passwords.csv --so
 account, obtains `account_fill_capability(account_id, field_kind)`, and calls
 `fill_secret(index, capability)`. The browser checks the live page and field
 origin before releasing the password to the browser process. New and rotated
-passwords can be stored with `save_account(...)`. The AES-GCM vault file is
+passwords can be stored with `save_account(...)`; pass the existing account ID
+when rotating an imported password. The AES-GCM vault file is
 `~/.wraith/accounts.vault` by default; its key is held in the OS keyring.
 `WRAITH_VAULT_PATH` changes the local file location.
 

@@ -330,11 +330,11 @@ async def import_google_credentials(csv_paths: list[str], source: str = "google"
 
 
 @app.tool()
-async def save_account(url: str, username: str, password: str, name: str = "", source: str = "agent") -> dict[str, str]:
+async def save_account(url: str, username: str, password: str, name: str = "", source: str = "agent", account_id: str = "") -> dict[str, str]:
     """Save a newly created or rotated login in the local encrypted account vault."""
     from .account_vault import upsert_account
 
-    return await _run(lambda: upsert_account(url, username, password, name=name, source=source))
+    return await _run(lambda: upsert_account(url, username, password, name=name, source=source, account_id=account_id))
 
 
 @app.tool()

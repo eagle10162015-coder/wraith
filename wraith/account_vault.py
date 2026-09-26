@@ -157,12 +157,19 @@ def all_accounts() -> list[dict[str, str]]:
     ]
 
 
-def upsert_account(url: str, username: str, password: str, *, name: str = "", source: str = "agent") -> dict[str, str]:
+def upsert_account(
+    url: str, username: str, password: str, *, name: str = "", source: str = "agent", account_id: str = ""
+) -> dict[str, str]:
     origin = canonical_origin(url)
     if not username or not password:
         raise ValueError("Username and password are required")
     records = _load()
-    record = next((r for r in records if (r["origin"], r["username"], r["source"]) == (origin, username, source)), None)
+    if account_id:
+        record = next((r for r in records if r["id"] == account_id), None)
+        if record is None or record["origin"] != origin or record["username"] != username:
+            raise ValueError("Account ID does not match origin and username")
+    else:
+        record = next((r for r in records if (r["origin"], r["username"], r["source"]) == (origin, username, source)), None)
     if record is None:
         record = {"id": os_secrets.token_hex(16), "origin": origin, "username": username, "source": source}
         records.append(record)
@@ -272,7 +279,7 @@ def main() -> None:
         print(json.dumps(all_accounts()))
     elif args.command == "_upsert_json":
         payload = json.loads(sys.stdin.read(1024 * 1024))
-        print(json.dumps(upsert_account(payload["url"], payload["username"], payload["password"], name=payload.get("name", ""), source=payload.get("source", "agent"))))
+        print(json.dumps(upsert_account(payload["url"], payload["username"], payload["password"], name=payload.get("name", ""), source=payload.get("source", "agent"), account_id=payload.get("account_id", ""))))
     elif args.command == "delete":
         print(json.dumps({"deleted": delete_account(args.account_id)}))
     elif args.command == "_browser_reveal":
