@@ -360,10 +360,39 @@ def _launch_camoufox(
     if merged_prefs:
         opts[_FIREFOX_PREFS_KEY] = merged_prefs
 
+    stable_profile = bool(profile_dir and not opts.get("proxy"))
+    prepared_options = None
+    save_profile_identity = False
+    if stable_profile:
+        from camoufox.pkgman import launch_path
+        from camoufox.utils import launch_options as prepare_camoufox_options
+        from .stable_identity import load_identity
+
+        current_identity = load_identity(profile_dir, launch_path())
+        if current_identity is not None:
+            opts["config"] = {**current_identity, **opts.get("config", {})}
+        else:
+            save_profile_identity = True
+        prefs = dict(opts.get(_FIREFOX_PREFS_KEY) or {})
+        # The binary currently randomizes exported canvas images per process
+        # despite a pinned canvas:seed. Returning accounts need stable output.
+        prefs["privacy.baselineFingerprintingProtection"] = False
+        opts[_FIREFOX_PREFS_KEY] = prefs
+        prepare_kwargs = {key: value for key, value in opts.items() if key != "persistent_context"}
+        prepared_options = prepare_camoufox_options(**prepare_kwargs)
+        opts = {"persistent_context": True, "from_options": prepared_options}
+
     cm = Camoufox(**opts)
     # Camoufox is itself a context manager that owns the Playwright lifetime.
     # Drive it manually so the Session can own teardown.
     browser_or_ctx = cm.__enter__()
+    if save_profile_identity and prepared_options is not None:
+        from .stable_identity import save_identity
+        try:
+            save_identity(profile_dir, prepared_options)
+        except Exception:
+            cm.__exit__(None, None, None)
+            raise
 
     if profile_dir:
         # Persistent context: the returned object IS the BrowserContext.

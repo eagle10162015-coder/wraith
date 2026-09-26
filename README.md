@@ -30,6 +30,12 @@ The MCP browser uses a persistent, headed profile at
 adapters can use the same vault. The importer leaves plaintext source CSV files
 unchanged.
 
+For a persistent, direct Camoufox profile, Wraith saves the generated browser
+identity in that profile and restores it across restarts. A browser binary
+version change generates a new identity. Direct mode also keeps canvas exports
+stable across restarts. Proxy sessions retain Camoufox's normal location-aware
+fingerprint handling.
+
 Site challenges and account recovery can still interrupt automation. This
 fork reports outcomes without guaranteeing acceptance by every site.
 
