@@ -267,6 +267,23 @@ async def snapshot() -> str:
 
 
 @app.tool()
+async def fingerprint_health() -> dict[str, Any]:
+    """Check basic automation and window signals in the active browser page.
+
+    This is a local diagnostic, not a prediction of every site's verdict.
+    """
+    script = """() => {
+      const webdriver = navigator.webdriver === true;
+      const headlessUA = /Headless/i.test(navigator.userAgent);
+      const plugins = navigator.plugins.length;
+      const geometryValid = outerWidth >= innerWidth && outerHeight >= innerHeight;
+      return { webdriver, headlessUA, plugins, geometryValid,
+        basicSignalsPass: !webdriver && !headlessUA && plugins > 0 && geometryValid };
+    }"""
+    return await _run(lambda: _get_browser().page.evaluate(script))
+
+
+@app.tool()
 async def click(index: int, include_snapshot: bool = False) -> str:
     """Click the element with the given index (from the latest snapshot).
 

@@ -20,6 +20,9 @@ when rotating an imported password. The AES-GCM vault file is
 `WRAITH_VAULT_PATH` changes the local file location.
 Vault reads and writes use a cross-process lock, so multiple agent processes
 cannot overwrite each other's account updates.
+Agents with arbitrary page evaluation can inspect values after they are filled
+into a page. `fingerprint_health` checks a few local browser signals without a
+screenshot; its result cannot guarantee acceptance by a site.
 
 The MCP browser uses a persistent, headed profile at
 `~/.wraith/profiles/default`. Set `WRAITH_PROFILE_DIR` for another profile or
