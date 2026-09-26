@@ -60,9 +60,11 @@ app = _MCPServer(
     "wraith",
     instructions=(
         "Wraith is a stealth + identity-borrowing browser for autonomous agents. "
-        "Use `navigate(url)` to open a page (it auto-passes WAAP challenges and "
-        "dismisses cookie banners) and get back an indexed snapshot of interactive "
-        "elements. Each line looks like `[12]<button role=button>Search</button>`; "
+        "Use `navigate(url)` to open a page (it handles common challenges and "
+        "dismisses cookie banners) and get a compact status. For a login use "
+        "accounts_for_site(url)` and `autofill_account(account_id)`. When a "
+        "general action needs an indexed snapshot, call `snapshot()`; each line "
+        "looks like `[12]<button role=button>Search</button>`; "
         "act on an element by its index with `click(index)` or "
         "`type_text(index, text)`. Use `fill_secret(index, capability)` for an "
         "opaque secret capability from a registered provider. Use `snapshot()` "
@@ -99,6 +101,7 @@ _LAUNCH_KW: "Optional[dict[str, Any]]" = None
 ENV_PROXY = "WRAITH_PROXY"               # URL, or literal "dataimpulse" / "anyip"
 ENV_PROXY_COUNTRY = "WRAITH_PROXY_COUNTRY"
 ENV_PROXY_NETWORK = "WRAITH_PROXY_NETWORK"  # anyIP only: residential | mobile
+ENV_PROFILE_DIR = "WRAITH_PROFILE_DIR"
 
 
 def configure(**launch_kw: Any) -> None:
@@ -124,9 +127,14 @@ def _launch_kw_from_env() -> "dict[str, Any]":
     than never starting — the MCP client would otherwise see only a dead
     server.
     """
+    profile_dir = os.environ.get(ENV_PROFILE_DIR) or os.path.join(os.path.expanduser("~"), ".wraith", "profiles", "default")
+    launch_kw: dict[str, Any] = {
+        "profile_dir": os.path.abspath(os.path.expanduser(profile_dir)),
+        "headless": os.environ.get("WRAITH_HEADLESS") == "1",
+    }
     spec = os.environ.get(ENV_PROXY)
     if not spec or not spec.strip():
-        return {}
+        return launch_kw
     from . import providers  # lazy: keeps `import wraith.mcp` light
 
     try:
@@ -137,16 +145,20 @@ def _launch_kw_from_env() -> "dict[str, Any]":
         )
     except Exception as exc:  # auth / secret-command / targeting errors
         print(f"wraith-mcp: {ENV_PROXY} ignored ({exc}); launching without a proxy", file=sys.stderr)
-        return {}
+        return launch_kw
     if url is None:
-        return {}
+        return launch_kw
     print(f"wraith-mcp: using {label or 'explicit'} proxy for the browser", file=sys.stderr)
-    return {"proxy": url}
+    launch_kw["proxy"] = url
+    return launch_kw
 
 
 def _effective_launch_kw() -> "dict[str, Any]":
     """The kwargs the next browser launch will use (configure() wins over env)."""
-    return dict(_LAUNCH_KW) if _LAUNCH_KW is not None else _launch_kw_from_env()
+    launch_kw = _launch_kw_from_env()
+    if _LAUNCH_KW is not None:
+        launch_kw.update(_LAUNCH_KW)
+    return launch_kw
 
 
 async def _run(fn: "Callable[[], T]") -> T:
@@ -180,7 +192,9 @@ def _get_browser(reputation: Optional[Any] = None) -> "AgentBrowser":
         _reset_browser()
     if _browser is None:
         from .agent import AgentBrowser  # lazy: needs the browser stack
+        from .account_vault import register as register_account_vault
 
+        register_account_vault()
         _browser = AgentBrowser(reputation=reputation, **_effective_launch_kw())
     return _browser
 
@@ -221,9 +235,9 @@ def _ctx_from_browser(browser: "AgentBrowser") -> Any:
 def _render(snap: Any, include_snapshot: bool = True) -> str:
     """Full indexed snapshot, or a compact summary when the caller doesn't need it.
 
-    Action tools default to returning the full snapshot, but pass
-    ``include_snapshot=false`` to save tokens — you then get the URL, what
-    changed, and the element count (call ``snapshot()`` for the indexed list).
+    Action tools return a compact summary by default. Set
+    ``include_snapshot=true`` or call ``snapshot()`` when indexed controls
+    are needed for a general interaction.
     """
     if include_snapshot:
         return snap.to_text()
@@ -235,14 +249,12 @@ def _render(snap: Any, include_snapshot: bool = True) -> str:
 
 
 @app.tool()
-async def navigate(url: str, include_snapshot: bool = True) -> str:
-    """Open a URL and return an indexed snapshot of the page's interactive
-    elements.
+async def navigate(url: str, include_snapshot: bool = False) -> str:
+    """Open a URL and return a compact status by default.
 
     Automatically passes WAAP/anti-bot challenges and dismisses common
-    cookie/consent banners. Each line is ``[index]<tag role=...>text</tag>``;
-    use the index with `click` / `type_text`. Pass ``include_snapshot=false`` for
-    a compact summary (saves tokens; call `snapshot()` when you need the list).
+    cookie/consent banners. Set ``include_snapshot=true`` when you need
+    indexed controls for click/type, or use `autofill_account` for login forms.
     """
     return await _run(lambda: _render(_get_browser().navigate(url), include_snapshot))
 
@@ -255,7 +267,7 @@ async def snapshot() -> str:
 
 
 @app.tool()
-async def click(index: int, include_snapshot: bool = True) -> str:
+async def click(index: int, include_snapshot: bool = False) -> str:
     """Click the element with the given index (from the latest snapshot).
 
     Returns the resulting snapshot (or a compact change summary when
@@ -265,7 +277,7 @@ async def click(index: int, include_snapshot: bool = True) -> str:
 
 
 @app.tool()
-async def type_text(index: int, text: str, enter: bool = False, include_snapshot: bool = True) -> str:
+async def type_text(index: int, text: str, enter: bool = False, include_snapshot: bool = False) -> str:
     """Type ``text`` into the input with the given index (clears it first; if
     ``enter`` is true, presses Enter to submit). Returns the resulting snapshot
     (or a compact summary when ``include_snapshot=false``)."""
@@ -278,7 +290,7 @@ async def type_text(index: int, text: str, enter: bool = False, include_snapshot
 async def fill_secret(
     index: int,
     capability: dict[str, Any],
-    include_snapshot: bool = True,
+    include_snapshot: bool = False,
 ) -> str:
     """Fill a field from an opaque secret capability.
 
@@ -298,7 +310,89 @@ async def fill_secret(
 
 
 @app.tool()
-async def scroll(direction: str = "down", include_snapshot: bool = True) -> str:
+async def accounts_for_site(url: str) -> list[dict[str, str]]:
+    """List imported account labels for one exact site origin; no passwords."""
+    from .account_vault import accounts_for
+
+    return await _run(lambda: accounts_for(url))
+
+
+@app.tool()
+async def import_google_credentials(csv_paths: list[str], source: str = "google") -> dict[str, int]:
+    """Import one or more local Google Password Manager CSV exports into the OS-keyring encrypted vault.
+
+    Returns counts only. Each Google account can be given a distinct source label.
+    The source CSV files are left unchanged.
+    """
+    from .account_vault import import_google_csv
+
+    return await _run(lambda: import_google_csv(csv_paths, source=source))
+
+
+@app.tool()
+async def save_account(url: str, username: str, password: str, name: str = "", source: str = "agent") -> dict[str, str]:
+    """Save a newly created or rotated login in the local encrypted account vault."""
+    from .account_vault import upsert_account
+
+    return await _run(lambda: upsert_account(url, username, password, name=name, source=source))
+
+
+@app.tool()
+async def account_fill_capability(account_id: str, field_kind: str) -> dict[str, object]:
+    """Get a short-lived capability for fill_secret; no password is returned."""
+    from .account_vault import capability_for
+
+    return await _run(lambda: capability_for(account_id, field_kind))
+
+
+@app.tool()
+async def autofill_account(account_id: str, submit: bool = False) -> dict[str, Any]:
+    """Fill a selected account in common login forms without a screenshot or page snapshot.
+
+    Works with one-page and username-first forms. Call again when the password
+    field appears. The account must match the live page origin exactly.
+    """
+    from .account_vault import _reveal_for_browser
+    from .secrets import canonical_origin
+
+    def _fill() -> dict[str, Any]:
+        page = _get_browser().page
+        origin = canonical_origin(page.url)
+        username_selectors = (
+            'input[autocomplete="username"]', 'input[type="email"]',
+            'input[name="username"]', 'input[name="email"]',
+            'input[id="username"]', 'input[id="email"]', '#identifierId',
+        )
+        filled = {"username": False, "password": False}
+        for selector in username_selectors:
+            field = page.locator(selector).first
+            if field.count() and field.is_visible():
+                value = _reveal_for_browser(account_id, "username", origin)
+                if canonical_origin(page.url) != origin:
+                    raise RuntimeError("Page origin changed")
+                field.fill(value)
+                filled["username"] = True
+                break
+        password = page.locator('input[type="password"]').first
+        if password.count() and password.is_visible():
+            value = _reveal_for_browser(account_id, "password", origin)
+            if canonical_origin(page.url) != origin:
+                raise RuntimeError("Page origin changed")
+            password.fill(value)
+            filled["password"] = True
+        submitted = False
+        if submit and (filled["username"] or filled["password"]):
+            button = page.locator('button[type="submit"], input[type="submit"]').first
+            if button.count() and button.is_visible():
+                button.click()
+                submitted = True
+        return {"origin": origin, "filled": filled, "submitted": submitted}
+
+    return await _run(_fill)
+
+
+@app.tool()
+async def scroll(direction: str = "down", include_snapshot: bool = False) -> str:
     """Scroll the page (``"down"`` or ``"up"``) and return a fresh snapshot
     (or a compact summary when ``include_snapshot=false``)."""
     return await _run(lambda: _render(_get_browser().scroll(direction=direction), include_snapshot))

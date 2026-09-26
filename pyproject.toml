@@ -43,6 +43,7 @@ dependencies = [
     # Chrome cookie decryption (wraith.chrome) + dead-drop AEAD/HKDF
     # (wraith.deaddrop) for the profile-sync feature.
     "cryptography>=42",
+    "keyring>=25",
 ]
 
 [project.urls]

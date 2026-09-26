@@ -567,9 +567,14 @@ class AgentBrowser:
         if not self._secret_field_matches(capability.field_kind, metadata):
             raise SecretPolicyError("The target field does not match field_kind")
 
+        owner_frame = element.owner_frame()
+        if owner_frame is None:
+            raise SecretPolicyError("The target field has no browser frame")
+        frame_origin = canonical_origin(owner_frame.url)
+
         context = SecretRequestContext(
             origin=origin,
-            frame_origin=origin,
+            frame_origin=frame_origin,
             field_kind=capability.field_kind,
             field_tag=metadata["tag"],
             field_type=metadata["type"],

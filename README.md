@@ -1,5 +1,32 @@
 # 🌀 Wraith
 
+## Local account import (fork extension)
+
+This fork adds a shared encrypted account vault. Google Password Manager CSV
+exports from multiple Google accounts can be merged:
+
+```powershell
+python -m wraith.account_vault import-google C:\path\to\passwords.csv --source personal-google
+python -m wraith.account_vault import-google C:\path\to\other-passwords.csv --source work-google
+```
+
+`accounts_for_site(url)` returns account labels and IDs. The agent chooses an
+account, obtains `account_fill_capability(account_id, field_kind)`, and calls
+`fill_secret(index, capability)`. The browser checks the live page and field
+origin before releasing the password to the browser process. New and rotated
+passwords can be stored with `save_account(...)`. The AES-GCM vault file is
+`~/.wraith/accounts.vault` by default; its key is held in the OS keyring.
+`WRAITH_VAULT_PATH` changes the local file location.
+
+The MCP browser uses a persistent, headed profile at
+`~/.wraith/profiles/default`. Set `WRAITH_PROFILE_DIR` for another profile or
+`WRAITH_HEADLESS=1` for a headless session. The Camofox and CloakBrowser
+adapters can use the same vault. The importer leaves plaintext source CSV files
+unchanged.
+
+Site challenges and account recovery can still interrupt automation. This
+fork reports outcomes without guaranteeing acceptance by every site.
+
 > A stealth, identity-borrowing, MCP-native agent browser.
 
 [![CI](https://github.com/YogevKr/wraith/actions/workflows/ci.yml/badge.svg)](https://github.com/YogevKr/wraith/actions/workflows/ci.yml)
